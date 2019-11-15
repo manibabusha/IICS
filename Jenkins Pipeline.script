@@ -1,0 +1,62 @@
+node {
+    def String region
+    def String username
+    def String password
+    def String releaseVersion
+    def String utilHome
+    def String gitWorkspace
+    def String orgLogin
+    
+    stage('Preparation') {
+        utilHome = 'C:\Program Files\IICS'
+    
+        if (params.TargetDetails == "PROD") {
+            orgLogin = "prod_login"
+            region = "us"
+        } else if (params.SourceDetails == "QA") {
+            orgLogin = "qa_login"
+            region = "us"
+        } else if (params.SourceDetails == "DEV") {
+            orgLogin = "dev_login"
+            region = "us"
+        } else {
+            orgLogin = "prod_login"
+            region = "us"
+        }
+    
+        withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: "${orgLogin}", usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD']]) {
+            username = env.USERNAME
+            password = env.PASSWORD
+        }
+    
+        releaseVersion = params.ReleaseVersion
+        gitWorkspace = params.GitWorkspace
+        git url: params.GitStore, credentialsId: 'jenkins_ssh_key', branch: 'master'
+    }
+    
+    stage('VersionControl') {
+       bat label: 'Checking out the Release tag assets to local repo', script: "git checkout ${releaseVersion}"
+    }
+   
+   stage('Package') {
+      dir ("${utilHome}")
+      {
+          bat label: 'Package the IICS assets into an import ZIP', returnStdout: true, script: "iics.exe package -z importZIP/import_${releaseVersion}.zip -w ${gitWorkspace} --artifactsFile input.${releaseVersion}.lst"
+      }
+   }
+   
+   stage('Import') {
+      dir ("${utilHome}")
+      {
+          bat label: 'Import the IICS assets into IICS', returnStdout: true, script: "iics.exe import --region ${region} --username ${username} --password ${password} --zipFilePath importZIP/import_${releaseVersion}.zip"
+      }
+   }
+   
+   stage('Publish') {
+      dir ("${utilHome}")
+      {
+          bat label: 'Publish the IICS assets', returnStdout: true, script: "iics.exe publish --region ${region} --username ${username} --password ${password} --artifactsFile input.${releaseVersion}.lst"
+      }
+   }
+   
+}
